@@ -1,0 +1,25 @@
+name: PoC Artifact Downloader (workflow_run test)
+on:
+  workflow_run:
+    workflows: ["PoC Artifact Uploader (workflow_run test)"]
+    types:
+      - completed
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: poc-artifact
+          path: /tmp/downloaded
+      - name: run-downloaded-script
+        run: |
+          echo "Downloaded files:"
+          ls -la /tmp/downloaded/
+          if [ -f /tmp/downloaded/poc-script.sh ]; then
+            echo "Executing downloaded script..."
+            bash /tmp/downloaded/poc-script.sh
+          else
+            echo "No script found"
+          fi
