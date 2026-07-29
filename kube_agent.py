@@ -33,6 +33,48 @@ WORK = HERE / "work"
 
 SA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount"
 
+
+def _writable(directory: Path) -> bool:
+    """True if we can create `directory` and write inside it."""
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        probe = directory / ".write-probe"
+        probe.write_text("ok")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_out_dir(preferred: Path | None) -> Path:
+    """Pick a writable state directory, never raising.
+
+    Persistence must not be able to kill the run at startup — a pod often has no
+    writable volume, and OpenShift assigns an arbitrary non-root UID. Falls back
+    through sensible candidates and warns about what it actually chose. Findings
+    also go to stdout regardless, which survives a restart via
+    `kubectl logs --previous`.
+    """
+    candidates: list[Path] = []
+    if preferred is not None:
+        candidates.append(preferred)
+    if env_dir := os.getenv("KUBE_AGENT_OUT_DIR"):
+        candidates.append(Path(env_dir))
+    candidates += [
+        HERE / "state",
+        Path(os.getenv("TMPDIR", "/tmp")) / "kube-agent-state",
+        Path.cwd() / "kube-agent-state",
+    ]
+    for candidate in candidates:
+        if _writable(candidate):
+            if preferred is not None and candidate != preferred:
+                print(f"# WARN: {preferred} is not writable — using {candidate} instead")
+            return candidate
+    # Truly nowhere to write: degrade to stdout-only rather than crash.
+    print("# WARN: no writable state directory found — findings go to stdout only")
+    print("#       recover them with: kubectl logs <pod> | grep '@@FINDING@@'")
+    return Path(os.devnull).parent  # /dev — writes fail, handled per-record
+
 HOST_ACCESS_PREFIXES = ("/", "/etc", "/proc", "/dev", "/var/log", "/var/lib/kubelet", "/root", "/home")
 
 
@@ -456,8 +498,7 @@ class K8sEscapeAgent(Agent):
         super().__init__(**kwargs)
         WORK.mkdir(parents=True, exist_ok=True)
         self.scope = scope
-        self.out_dir = out_dir or (HERE / "state")
-        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = _resolve_out_dir(out_dir)
         self._jsonl = self.out_dir / "findings.jsonl"
         self._live_md = self.out_dir / "findings-live.md"
         self.shell = ShellTools(cwd=str(WORK))
