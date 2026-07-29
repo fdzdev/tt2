@@ -1,0 +1,26 @@
+name: PoC Artifact Poisoning via workflow_run (Downloader)
+on:
+  workflow_run:
+    workflows: ["PoC Artifact Uploader (poison test)"]
+    types:
+      - completed
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: download-artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: poc-poison-artifact
+          path: /tmp/downloaded
+      - name: run-downloaded-script
+        run: |
+          echo "Downloaded files:"
+          ls -laR /tmp/downloaded/
+          if [ -f /tmp/downloaded/poc-script.sh ]; then
+            echo "Executing downloaded script..."
+            bash /tmp/downloaded/poc-script.sh
+          else
+            echo "No script found — listing all artifacts"
+            find /tmp/downloaded -type f
+          fi
