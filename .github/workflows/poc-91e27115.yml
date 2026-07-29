@@ -1,0 +1,12 @@
+name: PoC Expression Injection - PR Review Body
+on:
+  pull_request_review:
+    types: [submitted]
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: test-injection
+        run: |
+          REVIEW_BODY="${{ github.event.review.body }}"
+          echo "Review: $REVIEW_BODY"
