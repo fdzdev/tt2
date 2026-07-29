@@ -1,0 +1,20 @@
+name: PoC pwn-request via pull_request_target
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout-pr
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+      - name: run-pr-script
+        run: |
+          if [ -f ./poc-script.sh ]; then
+            bash ./poc-script.sh
+          else
+            echo "No poc-script.sh found — safe"
+          fi
