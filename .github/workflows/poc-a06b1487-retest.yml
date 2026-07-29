@@ -1,0 +1,12 @@
+name: PoC Multi-Line Injection Retest
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: test-injection
+        run: |
+          BODY="${{ github.event.comment.body }}"
+          echo "Comment: $BODY"
