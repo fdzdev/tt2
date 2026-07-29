@@ -1,0 +1,12 @@
+name: PoC Expression Injection - Issue Title (retest)
+on:
+  issues:
+    types: [opened]
+jobs:
+  poc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: test-injection
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+          echo "Title: $TITLE"
